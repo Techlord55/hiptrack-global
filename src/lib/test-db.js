@@ -1,4 +1,4 @@
-import { query } from './db.js'; // import your DB helper
+import { query } from './dby.js'; // import your DB helper
 
 (async () => {
   try {

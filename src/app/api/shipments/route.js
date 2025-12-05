@@ -49,3 +49,16 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Failed to create shipment' }, { status: 500 })
   }
 }
+export async function GET() {
+  const { data: shipments, error } = await supabase
+    .from('shipments')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Supabase error:', error)
+    return NextResponse.json({ error: 'Failed to fetch shipments' }, { status: 500 })
+  }
+
+  return NextResponse.json(shipments)
+}
