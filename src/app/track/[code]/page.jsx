@@ -1,10 +1,11 @@
 // src/app/track/[code]/page.jsx
+"use client";
 
 import dynamic from 'next/dynamic'
 import ShipmentBarcode from '@/components/ShipmentQRCode' // client component using 'react-barcode'
 
 const MapLeaflet = dynamic(() => import('@/components/MapLeaflet'), { ssr: false })
-const ShipmentDetailsClient = dynamic(() => import('@/components/ShipmentDetailsClient'), { ssr: false })
+const ShipmentDetails = dynamic(() => import('@/components/ShipmentDetails'), { ssr: false })
 
 export default async function Page({ params }) {
     const code = params.code.toUpperCase()
