@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-const TOTAL_SLIDES = 8;
+const TOTAL_SLIDES = 9;
 
 // Fallback local images
 const fallbackImages = Array.from({ length: TOTAL_SLIDES }, (_, i) => `/ships/${i + 1}.jpg`);
