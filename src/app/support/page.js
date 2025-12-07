@@ -2,32 +2,17 @@
 
 import Link from "next/link";
 import ChatWidget from "@/components/ChatWidget";
-import { Package, Mail, Phone, Clock, MessageCircle, FileQuestion } from "lucide-react";
+import Navbar from "@/components/Navbar";
+import { Mail, Phone, Clock, MessageCircle, FileQuestion } from "lucide-react";
 
 export default function Support() {
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-white shadow-sm border-b border-gray-100">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <Link href="/" className="flex items-center space-x-2">
-            <Package className="w-8 h-8 text-purple-600" />
-            <div className="flex items-center">
-              <span className="text-3xl font-extrabold text-purple-600">ShipTrack</span>
-              <span className="text-3xl font-extrabold text-orange-500">Global</span>
-            </div>
-          </Link>
-          <Link
-            href="/"
-            className="text-gray-600 hover:text-purple-600 font-medium transition"
-          >
-            Back to Home
-          </Link>
-        </div>
-      </header>
+      {/* Navbar */}
+      <Navbar showFullNav={true} />
 
       {/* Hero Section */}
-      <div className="bg-gradient-to-r from-purple-600 to-orange-500 text-white py-16">
+      <div className="bg-linear-to-r from-purple-600 to-orange-500 text-white py-16">
         <div className="container mx-auto px-4 text-center">
           <h1 className="text-5xl font-extrabold mb-4">How Can We Help You?</h1>
           <p className="text-xl opacity-90">
@@ -128,7 +113,7 @@ export default function Support() {
         </div>
 
         {/* Feedback Section */}
-        <div className="mt-16 bg-gradient-to-r from-purple-100 to-orange-100 p-10 rounded-2xl">
+        <div className="mt-16 bg-linear-to-r from-purple-100 to-orange-100 p-10 rounded-2xl">
           <div className="flex items-center mb-6">
             <Clock className="w-10 h-10 text-purple-600 mr-3" />
             <h2 className="text-3xl font-bold text-gray-900">We Value Your Feedback</h2>
@@ -136,13 +121,12 @@ export default function Support() {
           <p className="text-gray-700 mb-6 text-lg">
             Help us improve our services by sharing your experience. Your feedback matters to us and helps us serve you better.
           </p>
-        <Link
-  href="/feedbacks"
-  className="inline-block px-8 py-3 bg-purple-600 text-white font-bold rounded-full hover:bg-purple-700 transition shadow-lg"
->
-  Submit Feedback
-</Link>
-
+          <a
+            href="mailto:support@shiptrackglobal.com?subject=Feedback"
+            className="inline-block px-8 py-3 bg-purple-600 text-white font-bold rounded-full hover:bg-purple-700 transition shadow-lg"
+          >
+            Submit Feedback
+          </a>
         </div>
       </div>
 

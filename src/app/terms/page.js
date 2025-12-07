@@ -3,31 +3,18 @@
 import Link from "next/link";
 import ChatWidget from "@/components/ChatWidget";
 import { Package, FileText, AlertCircle, Scale, UserX, RefreshCw } from "lucide-react";
+import Navbar from "@/components/Navbar";
 
 export default function TermsOfService() {
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-white shadow-sm border-b border-gray-100">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <Link href="/" className="flex items-center space-x-2">
-            <Package className="w-8 h-8 text-purple-600" />
-            <div className="flex items-center">
-              <span className="text-3xl font-extrabold text-purple-600">ShipTrack</span>
-              <span className="text-3xl font-extrabold text-orange-500">Global</span>
-            </div>
-          </Link>
-          <Link
-            href="/"
-            className="text-gray-600 hover:text-purple-600 font-medium transition"
-          >
-            Back to Home
-          </Link>
-        </div>
-      </header>
+
+        {/* Navbar */}
+            <Navbar showFullNav={true} />
+     
 
       {/* Hero Section */}
-      <div className="bg-gradient-to-r from-purple-600 to-orange-500 text-white py-16">
+      <div className="bg-linear-to-r from-purple-600 to-orange-500 text-white py-16">
         <div className="container mx-auto px-4 text-center">
           <FileText className="w-16 h-16 mx-auto mb-4" />
           <h1 className="text-5xl font-extrabold mb-4">Terms of Service</h1>
@@ -45,7 +32,7 @@ export default function TermsOfService() {
         <div className="max-w-4xl mx-auto bg-white p-10 rounded-2xl shadow-lg border border-gray-100">
           <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8 rounded">
             <div className="flex items-start">
-              <AlertCircle className="w-6 h-6 text-yellow-600 mr-3 flex-shrink-0 mt-1" />
+              <AlertCircle className="w-6 h-6 text-yellow-600 mr-3 shrink-0 mt-1" />
               <p className="text-gray-700">
                 <strong>Important:</strong> By accessing or using ShipTrack Global's website and services, you agree to be bound by these Terms of Service. If you do not agree, please do not use our services.
               </p>
@@ -245,7 +232,7 @@ export default function TermsOfService() {
           </div>
 
           {/* Contact Section */}
-          <div className="bg-gradient-to-r from-purple-100 to-orange-100 p-8 rounded-xl">
+          <div className="bg-linear-to-r from-purple-100 to-orange-100 p-8 rounded-xl">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">10. Contact Information</h2>
             <p className="text-gray-700 mb-4">
               For questions about these Terms of Service, please contact us:
