@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { cities } from "@/lib/cities";
+import { useState, useMemo, useEffect } from "react";
 import { 
   Package, 
   User, 
@@ -10,15 +9,30 @@ import {
   CreditCard,
   Plus,
   X,
-  Truck
+  Truck,
+  Search
 } from "lucide-react";
 
+// You'll need to download cities.json from https://github.com/lutangar/cities.json
+// and place it in your public folder
+
 export default function AdminForm({ onSuccess }) {
+  const [cities, setCities] = useState([]);
+  const [citiesLoaded, setCitiesLoaded] = useState(false);
+  const [originSearch, setOriginSearch] = useState("");
+  const [destSearch, setDestSearch] = useState("");
+  const [showOriginDropdown, setShowOriginDropdown] = useState(false);
+  const [showDestDropdown, setShowDestDropdown] = useState(false);
+
   const [form, setForm] = useState({
     name: "",
     agency: "",
     originCity: "",
     destCity: "",
+    origin_lat: null,
+    origin_lng: null,
+    dest_lat: null,
+    dest_lng: null,
     estimated_hours: "",
     shipper_name: "",
     shipper_phone: "",
@@ -33,7 +47,7 @@ export default function AdminForm({ onSuccess }) {
     payment_mode: "CASH",
     admin_comment: "",
     status: "In Transit",
-    location:""
+    location: ""
   });
 
   const [products, setProducts] = useState([
@@ -43,6 +57,44 @@ export default function AdminForm({ onSuccess }) {
   function generateCarrierRef() {
     return "LOG" + Math.floor(100000000000 + Math.random() * 900000000000);
   }
+
+  // Load cities data
+  useEffect(() => {
+    if (!citiesLoaded) {
+      fetch('/cities.json')
+        .then(res => res.json())
+        .then(data => {
+          setCities(data);
+          setCitiesLoaded(true);
+        })
+        .catch(err => {
+          console.error('Failed to load cities:', err);
+        });
+    }
+  }, [citiesLoaded]);
+
+  // Filter cities based on search
+  const filteredOriginCities = useMemo(() => {
+    if (!originSearch || originSearch.length < 2) return [];
+    const searchLower = originSearch.toLowerCase();
+    return cities
+      .filter(city => 
+        city.name.toLowerCase().includes(searchLower) ||
+        city.country.toLowerCase().includes(searchLower)
+      )
+      .slice(0, 50);
+  }, [cities, originSearch]);
+
+  const filteredDestCities = useMemo(() => {
+    if (!destSearch || destSearch.length < 2) return [];
+    const searchLower = destSearch.toLowerCase();
+    return cities
+      .filter(city => 
+        city.name.toLowerCase().includes(searchLower) ||
+        city.country.toLowerCase().includes(searchLower)
+      )
+      .slice(0, 50);
+  }, [cities, destSearch]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -65,26 +117,34 @@ export default function AdminForm({ onSuccess }) {
     setProducts(products.filter((_, i) => i !== index));
   };
 
-  const getCityCoords = (city) => {
-    const selected = cities.find((c) => c.name === city);
-    return selected ? { lat: selected.lat, lng: selected.lng } : { lat: null, lng: null };
+  const selectOriginCity = (city) => {
+    setForm({ 
+      ...form, 
+      originCity: `${city.name}, ${city.country}`,
+      origin_lat: parseFloat(city.lat),
+      origin_lng: parseFloat(city.lng)
+    });
+    setOriginSearch(`${city.name}, ${city.country}`);
+    setShowOriginDropdown(false);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const selectDestCity = (city) => {
+    setForm({ 
+      ...form, 
+      destCity: `${city.name}, ${city.country}`,
+      dest_lat: parseFloat(city.lat),
+      dest_lng: parseFloat(city.lng)
+    });
+    setDestSearch(`${city.name}, ${city.country}`);
+    setShowDestDropdown(false);
+  };
 
-    const origin = getCityCoords(form.originCity);
-    const dest = getCityCoords(form.destCity);
-
+  const handleSubmit = async () => {
     const payload = {
       ...form,
       products,
-      origin_lat: origin.lat,
-      origin_lng: origin.lng,
-      current_lat: origin.lat,
-      current_lng: origin.lng,
-      dest_lat: dest.lat,
-      dest_lng: dest.lng,
+      current_lat: form.origin_lat,
+      current_lng: form.origin_lng,
     };
 
     const res = await fetch("/api/shipments", {
@@ -98,12 +158,16 @@ export default function AdminForm({ onSuccess }) {
       return;
     }
 
-    // Reset form
+    // Reset
     setForm({
       name: "",
       agency: "",
       originCity: "",
       destCity: "",
+      origin_lat: null,
+      origin_lng: null,
+      dest_lat: null,
+      dest_lng: null,
       estimated_hours: "",
       shipper_name: "",
       shipper_phone: "",
@@ -118,7 +182,10 @@ export default function AdminForm({ onSuccess }) {
       payment_mode: "CASH",
       admin_comment: "",
       status: "In Transit",
+      location: ""
     });
+    setOriginSearch("");
+    setDestSearch("");
     setProducts([{ piece_type: "", description: "", qty: 1, length_cm: 0, width_cm: 0, height_cm: 0, weight_kg: 0 }]);
 
     onSuccess?.();
@@ -135,7 +202,7 @@ export default function AdminForm({ onSuccess }) {
   const labelClass = "block text-sm font-semibold text-gray-700 mb-2";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8">
+    <div className="space-y-8 p-6">
       
       {/* Shipment Details Section */}
       <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200">
@@ -155,7 +222,6 @@ export default function AdminForm({ onSuccess }) {
               placeholder="e.g., Electronics Batch #123" 
               value={form.name} 
               onChange={handleChange} 
-              required 
             />
           </div>
 
@@ -167,38 +233,89 @@ export default function AdminForm({ onSuccess }) {
               placeholder="e.g., FedEx, DHL, UPS" 
               value={form.agency} 
               onChange={handleChange} 
-              required 
             />
           </div>
 
-          <div>
+          {/* Origin City with Search */}
+          <div className="relative">
             <label className={labelClass}>
               <MapPin className="w-4 h-4 inline mr-1" />
               Origin City *
             </label>
-            <select className={inputClass} name="originCity" value={form.originCity} onChange={handleChange} required>
-              <option value="">Select Origin City</option>
-              {cities.map((c) => (
-                <option key={c.name} value={c.name}>
-                  {c.name}, {c.country}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input 
+                className={`${inputClass} pl-10`}
+                type="text"
+                placeholder="Type to search 130,000+ cities..."
+                value={originSearch}
+                onChange={(e) => {
+                  setOriginSearch(e.target.value);
+                  setShowOriginDropdown(true);
+                }}
+                onFocus={() => setShowOriginDropdown(true)}
+              />
+            </div>
+            {showOriginDropdown && originSearch.length >= 2 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                {filteredOriginCities.length > 0 ? (
+                  filteredOriginCities.map((city, idx) => (
+                    <button
+                      key={`${city.name}-${city.country}-${idx}`}
+                      type="button"
+                      className="w-full text-left px-4 py-2 hover:bg-purple-50 transition duration-150 border-b border-gray-100 last:border-b-0"
+                      onClick={() => selectOriginCity(city)}
+                    >
+                      <div className="font-medium text-gray-900">{city.name}</div>
+                      <div className="text-sm text-gray-500">{city.country} • Lat: {city.lat}, Lng: {city.lng}</div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-4 py-3 text-gray-500 text-sm">No cities found. Try a different search.</div>
+                )}
+              </div>
+            )}
           </div>
 
-          <div>
+          {/* Destination City with Search */}
+          <div className="relative">
             <label className={labelClass}>
               <MapPin className="w-4 h-4 inline mr-1" />
               Destination City *
             </label>
-            <select className={inputClass} name="destCity" value={form.destCity} onChange={handleChange} required>
-              <option value="">Select Destination City</option>
-              {cities.map((c) => (
-                <option key={c.name} value={c.name}>
-                  {c.name}, {c.country}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input 
+                className={`${inputClass} pl-10`}
+                type="text"
+                placeholder="Type to search 130,000+ cities..."
+                value={destSearch}
+                onChange={(e) => {
+                  setDestSearch(e.target.value);
+                  setShowDestDropdown(true);
+                }}
+                onFocus={() => setShowDestDropdown(true)}
+              />
+            </div>
+            {showDestDropdown && destSearch.length >= 2 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                {filteredDestCities.length > 0 ? (
+                  filteredDestCities.map((city, idx) => (
+                    <button
+                      key={`${city.name}-${city.country}-${idx}`}
+                      type="button"
+                      className="w-full text-left px-4 py-2 hover:bg-purple-50 transition duration-150 border-b border-gray-100 last:border-b-0"
+                      onClick={() => selectDestCity(city)}
+                    >
+                      <div className="font-medium text-gray-900">{city.name}</div>
+                      <div className="text-sm text-gray-500">{city.country} • Lat: {city.lat}, Lng: {city.lng}</div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-4 py-3 text-gray-500 text-sm">No cities found. Try a different search.</div>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
@@ -213,13 +330,12 @@ export default function AdminForm({ onSuccess }) {
               placeholder="e.g., 48" 
               value={form.estimated_hours} 
               onChange={handleChange} 
-              required 
             />
           </div>
 
           <div>
             <label className={labelClass}>Shipment Type *</label>
-            <select className={inputClass} name="shipment_type" value={form.shipment_type} onChange={handleChange} required>
+            <select className={inputClass} name="shipment_type" value={form.shipment_type} onChange={handleChange}>
               <option>Truckload</option>
               <option>Less than Truckload (LTL)</option>
               <option>Air Freight</option>
@@ -232,7 +348,7 @@ export default function AdminForm({ onSuccess }) {
               <Truck className="w-4 h-4 inline mr-1" />
               Shipment Mode *
             </label>
-            <select className={inputClass} name="shipment_mode" value={form.shipment_mode} onChange={handleChange} required>
+            <select className={inputClass} name="shipment_mode" value={form.shipment_mode} onChange={handleChange}>
               <option>Land Shipping</option>
               <option>Air Shipping</option>
               <option>Sea Shipping</option>
@@ -244,7 +360,7 @@ export default function AdminForm({ onSuccess }) {
               <CreditCard className="w-4 h-4 inline mr-1" />
               Payment Mode *
             </label>
-            <select className={inputClass} name="payment_mode" value={form.payment_mode} onChange={handleChange} required>
+            <select className={inputClass} name="payment_mode" value={form.payment_mode} onChange={handleChange}>
               <option>CASH</option>
               <option>CREDIT</option>
               <option>DEBIT</option>
@@ -270,7 +386,6 @@ export default function AdminForm({ onSuccess }) {
                 name="status" 
                 value={form.status} 
                 onChange={handleChange} 
-                required
               >
                 <option value="On Hold">On Hold</option>
                 <option value="In Transit">In Transit</option>
@@ -302,7 +417,6 @@ export default function AdminForm({ onSuccess }) {
               placeholder="Full name" 
               value={form.shipper_name} 
               onChange={handleChange} 
-              required 
             />
           </div>
 
@@ -314,7 +428,6 @@ export default function AdminForm({ onSuccess }) {
               placeholder="+1 234 567 8900" 
               value={form.shipper_phone} 
               onChange={handleChange} 
-              required 
             />
           </div>
 
@@ -326,7 +439,6 @@ export default function AdminForm({ onSuccess }) {
               placeholder="Full address with city, state, zip" 
               value={form.shipper_address} 
               onChange={handleChange} 
-              required 
               rows="2"
             />
           </div>
@@ -351,7 +463,6 @@ export default function AdminForm({ onSuccess }) {
               placeholder="Full name" 
               value={form.receiver_name} 
               onChange={handleChange} 
-              required 
             />
           </div>
 
@@ -363,7 +474,6 @@ export default function AdminForm({ onSuccess }) {
               placeholder="+1 234 567 8900" 
               value={form.receiver_phone} 
               onChange={handleChange} 
-              required 
             />
           </div>
 
@@ -376,7 +486,6 @@ export default function AdminForm({ onSuccess }) {
               placeholder="email@example.com" 
               value={form.receiver_email} 
               onChange={handleChange} 
-              required 
             />
           </div>
 
@@ -388,7 +497,6 @@ export default function AdminForm({ onSuccess }) {
               placeholder="Full address with city, state, zip" 
               value={form.receiver_address} 
               onChange={handleChange} 
-              required 
               rows="2"
             />
           </div>
@@ -439,7 +547,6 @@ export default function AdminForm({ onSuccess }) {
                     placeholder="Box, Pallet, etc." 
                     value={p.piece_type} 
                     onChange={(e) => handleProductChange(idx, "piece_type", e.target.value)} 
-                    required 
                   />
                 </div>
 
@@ -450,7 +557,6 @@ export default function AdminForm({ onSuccess }) {
                     placeholder="Product details" 
                     value={p.description} 
                     onChange={(e) => handleProductChange(idx, "description", e.target.value)} 
-                    required 
                   />
                 </div>
 
@@ -462,7 +568,6 @@ export default function AdminForm({ onSuccess }) {
                     placeholder="Qty" 
                     value={p.qty} 
                     onChange={(e) => handleProductChange(idx, "qty", e.target.value)} 
-                    required 
                   />
                 </div>
 
@@ -474,7 +579,6 @@ export default function AdminForm({ onSuccess }) {
                     placeholder="kg" 
                     value={p.weight_kg} 
                     onChange={(e) => handleProductChange(idx, "weight_kg", e.target.value)} 
-                    required 
                   />
                 </div>
 
@@ -486,7 +590,6 @@ export default function AdminForm({ onSuccess }) {
                     placeholder="cm" 
                     value={p.length_cm} 
                     onChange={(e) => handleProductChange(idx, "length_cm", e.target.value)} 
-                    required 
                   />
                 </div>
 
@@ -498,7 +601,6 @@ export default function AdminForm({ onSuccess }) {
                     placeholder="cm" 
                     value={p.width_cm} 
                     onChange={(e) => handleProductChange(idx, "width_cm", e.target.value)} 
-                    required 
                   />
                 </div>
 
@@ -510,7 +612,6 @@ export default function AdminForm({ onSuccess }) {
                     placeholder="cm" 
                     value={p.height_cm} 
                     onChange={(e) => handleProductChange(idx, "height_cm", e.target.value)} 
-                    required 
                   />
                 </div>
               </div>
@@ -534,15 +635,29 @@ export default function AdminForm({ onSuccess }) {
       </div>
 
       {/* Submit Button */}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-4">
         <button 
-          type="submit" 
+          onClick={handleSubmit} 
           className="bg-gradient-to-r from-purple-600 to-orange-500 text-white px-8 py-4 rounded-xl hover:shadow-2xl transition duration-300 transform hover:scale-105 font-bold text-lg flex items-center gap-2"
         >
           <Package className="w-5 h-5" />
           Create Shipment
         </button>
       </div>
-    </form>
+
+      {/* Loading Indicator */}
+      {!citiesLoaded && (
+        <div className="fixed bottom-4 right-4 bg-blue-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2">
+          <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+          Loading 130,000+ cities...
+        </div>
+      )}
+
+      {citiesLoaded && (
+        <div className="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg">
+          ✓ Cities loaded successfully!
+        </div>
+      )}
+    </div>
   );
 }

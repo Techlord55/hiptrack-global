@@ -15,11 +15,10 @@ import {
   TrendingUp,
   Navigation
 } from 'lucide-react'
-import ShipmentQRCode from './ShipmentQRCode'
-import ShipmentAdminControls from './ShipmentAdminControls'
-import ShipmentEdit from './ShipmentEdit'
-import ShipmentHistory from './ShipmentHistory'
 
+import ShipmentQRCode from './ShipmentQRCode'
+
+import ShipmentHistory from './ShipmentHistory'
 // Client-only map
 const MapLeaflet = dynamic(() => import('./MapLeaflet'), { ssr: false })
 
@@ -68,60 +67,89 @@ export default function ShipmentDetails({ initialShipment, isAdmin = false }) {
   }, [shipment, location, initialShipment])
 
   const eta = useMemo(() => {
-    if (!shipment?.created_at || !shipment?.estimated_hours) return { time: 'N/A', hours: 'N/A' }
-    const startTime = new Date(shipment.created_at)
-    const arrivalTime = new Date(startTime.getTime() + shipment.estimated_hours * 60 * 60 * 1000)
-    return {
-      time: arrivalTime.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-      hours: shipment.estimated_hours,
-    }
-  }, [shipment])
+  if (!shipment?.created_at || !location.lat || !location.lng) {
+    return { time: 'Calculating...', hours: 'N/A' }
+  }
 
-  useEffect(() => {
-    if (!initialShipment?.code) return
-    mounted.current = true
+  const originLat = shipment.origin_lat
+  const originLng = shipment.origin_lng
+  const destLat = shipment.dest_lat
+  const destLng = shipment.dest_lng
 
-    async function fetchShipment() {
-      try {
-        if (initialShipment.status === 'In Transit') {
-          await fetch('/api/simulate-movement', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: initialShipment.code }),
-          })
-        }
+  const totalDistance = calculateDistance(originLat, originLng, destLat, destLng)
+  const traveledDistance = calculateDistance(originLat, originLng, location.lat, location.lng)
+  const remainingDistance = Math.max(0, totalDistance - traveledDistance)
 
-        const res = await fetch(`/api/tracking/${initialShipment.code}`)
-        if (!res.ok) throw new Error('Failed to fetch')
-        const data = await res.json()
-        if (!mounted.current) return
+  const hoursInTransit =
+    (Date.now() - new Date(shipment.created_at).getTime()) / (1000 * 60 * 60)
 
-        setShipment(data)
+  const avgSpeed = traveledDistance / (hoursInTransit || 1) // km/h
+  const etaHours = remainingDistance / (avgSpeed || 1)
 
-        const statusStopsMovement = ['On Hold', 'Cancelled', 'Delivered'].includes(data.status)
-        if (!statusStopsMovement) {
-          setLocation({ lat: data.current_lat ?? null, lng: data.current_lng ?? null })
-        }
+  const arrivalTime = new Date(Date.now() + etaHours * 3600000)
 
-        if (['Cancelled', 'Delivered', 'On Hold'].includes(data.status)) {
-          setPolling(false)
-        }
-      } catch (err) {
-        console.error('Polling error', err)
+  return {
+    hours: etaHours.toFixed(1),
+    time: arrivalTime.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  }
+}, [shipment, location])
+
+useEffect(() => {
+  if (!initialShipment?.code) return
+  mounted.current = true
+
+  const fetchShipment = async () => {
+    try {
+      const res = await fetch(`/api/tracking/${initialShipment.code}`)
+      if (!res.ok) throw new Error('Failed to fetch')
+      const data = await res.json()
+      if (!mounted.current) return
+
+      setShipment(data)
+
+      const statusStopsMovement = ['On Hold', 'Cancelled', 'Delivered'].includes(data.status)
+
+      if (!statusStopsMovement) {
+        // Only simulate movement if shipment allowed to move
+        await fetch('/api/shipments/simulate-movement', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: initialShipment.code }),
+        })
+
+        setLocation({
+          lat: data.current_lat ?? null,
+          lng: data.current_lng ?? null
+        })
+      } else {
+        // Stop polling completely
+        setPolling(false)
       }
+    } catch (err) {
+      console.error('Polling error', err)
     }
+  }
 
-    fetchShipment()
-    pollingIntervalRef.current = setInterval(() => {
-      if (polling) fetchShipment()
-    }, 3000)
+  // First fetch
+  fetchShipment()
 
-    return () => {
-      mounted.current = false
-      clearInterval(pollingIntervalRef.current)
-      pollingIntervalRef.current = null
-    }
-  }, [initialShipment?.code, polling])
+  // Start interval only once
+  pollingIntervalRef.current = setInterval(() => {
+    if (polling) fetchShipment()
+  }, 3000)
+
+  return () => {
+    mounted.current = false
+    clearInterval(pollingIntervalRef.current)
+    pollingIntervalRef.current = null
+  }
+}, [initialShipment?.code, polling])
+
 
   const handleNotifySubmit = async (e) => {
     e.preventDefault()
@@ -188,6 +216,7 @@ export default function ShipmentDetails({ initialShipment, isAdmin = false }) {
               </div>
             </div>
             <ShipmentQRCode code={shipment.code} />
+            
           </div>
         </div>
 
@@ -255,6 +284,11 @@ export default function ShipmentDetails({ initialShipment, isAdmin = false }) {
                   <div>
                     <p className="text-sm text-gray-600">Estimated Travel Time</p>
                     <p className="text-2xl font-bold text-gray-900">{eta.hours} Hours</p>
+                        
+                  </div>
+                  <div>
+                     <p className="text-sm text-gray-600"> Travel Time</p>
+                    <p className="text-2xl font-bold text-gray-900">{shipment.estimated_hours} Hours</p>
                   </div>
                 </div>
               </div>
@@ -407,35 +441,15 @@ export default function ShipmentDetails({ initialShipment, isAdmin = false }) {
               </div>
             </div>
 
-            {/* Admin Controls */}
+            {/* Admin Controls - Placeholder */}
             {isAdmin && (
               <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
                 <h4 className="font-bold text-lg text-gray-900 mb-4">Admin Controls</h4>
-                <div className="space-y-3">
-                  <ShipmentAdminControls
-                    code={shipment.code}
-                    onUpdated={(updated) => {
-                      setShipment((s) => ({ ...s, ...updated }))
-                      if (updated.current_lat || updated.current_lng) setLocation({ lat: updated.current_lat, lng: updated.current_lng })
-                    }}
-                  />
-                  <button 
-                    onClick={() => setModalOpen(true)} 
-                    className="bg-gradient-to-r from-purple-600 to-orange-500 text-white px-6 py-3 rounded-lg hover:shadow-xl transition duration-300 font-semibold"
-                  >
-                    Open Full Edit
-                  </button>
-                  <ShipmentEdit 
-                    code={shipment.code} 
-                    open={modalOpen} 
-                    onClose={() => setModalOpen(false)} 
-                    onSaved={(u) => setShipment((s) => ({ ...s, ...u }))} 
-                  />
-                </div>
+                <p className="text-gray-600 text-sm">Admin controls component would go here (ShipmentAdminControls, ShipmentEdit, etc.)</p>
               </div>
             )}
 
-            {/* Shipment History */}
+          {/* Shipment History */}
             <ShipmentHistory shipmentCode={shipment.code} />
           </div>
         )}

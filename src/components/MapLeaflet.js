@@ -234,11 +234,14 @@ export default function MapLeaflet({ lat, lng, originLat, originLng, destLat, de
       }
 
       // Auto-zoom on delivered
-      if (status === 'Delivered') {
-        setTimeout(() => {
-          map.flyTo([currentLat, currentLng], 10, { duration: 1.2 })
-        }, 600)
-      }
+     if (status === 'Delivered') {
+  setTimeout(() => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.flyTo([currentLat, currentLng], 10, { duration: 1.2 })
+    }
+  }, 600)
+}
+
 
       prevStatusRef.current = status
       return

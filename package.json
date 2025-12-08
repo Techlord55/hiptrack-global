@@ -12,6 +12,7 @@
   "dependencies": {
     "@heroicons/react": "^2.2.0",
     "@supabase/supabase-js": "^2.86.2",
+    "cities.json": "^1.1.50",
     "dotenv": "^17.2.3",
     "firebase": "^12.6.0",
     "leaflet": "^1.9.4",
