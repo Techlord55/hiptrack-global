@@ -140,9 +140,9 @@ export default function ShipmentHistory({ shipmentCode }) {
                     </div>
                 ))}
             </div>
-
+ <div className='h-1'></div>
             {/* Alternative: Table View (commented out, can be toggled) */}
-            {/* <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
                 <table className="min-w-full">
                     <thead className="bg-gradient-to-r from-purple-600 to-orange-500 text-white">
                         <tr>
@@ -183,7 +183,7 @@ export default function ShipmentHistory({ shipmentCode }) {
                         ))}
                     </tbody>
                 </table>
-            </div> */}
+            </div>
         </div>
     );
 }

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { v4 as uuidv4 } from 'uuid';
+
 import { 
   Package, 
   User, 
@@ -10,11 +12,13 @@ import {
   Plus,
   X,
   Truck,
-  Search
+  Search,
+  DollarSign,
+  FileText,
+  Shield,
+  Globe,
+  AlertTriangle
 } from "lucide-react";
-
-// You'll need to download cities.json from https://github.com/lutangar/cities.json
-// and place it in your public folder
 
 export default function AdminForm({ onSuccess }) {
   const [cities, setCities] = useState([]);
@@ -25,6 +29,7 @@ export default function AdminForm({ onSuccess }) {
   const [showDestDropdown, setShowDestDropdown] = useState(false);
 
   const [form, setForm] = useState({
+    // Basic Info
     name: "",
     agency: "",
     originCity: "",
@@ -34,6 +39,8 @@ export default function AdminForm({ onSuccess }) {
     dest_lat: null,
     dest_lng: null,
     estimated_hours: "",
+    
+    // Shipper/Receiver
     shipper_name: "",
     shipper_phone: "",
     shipper_address: "",
@@ -41,22 +48,162 @@ export default function AdminForm({ onSuccess }) {
     receiver_phone: "",
     receiver_email: "",
     receiver_address: "",
+    
+    // Shipment Type
     shipment_type: "Truckload",
     shipment_mode: "Land Shipping",
     carrier_ref: generateCarrierRef(),
+     client_id: generateClientId(),
+  current_vehicle_id: generateVehicleId(),
+  current_driver_id: generateDriverId(),
     payment_mode: "CASH",
-    admin_comment: "",
     status: "In Transit",
-    location: ""
+    location: "",
+    
+   
+    
+    // NEW FIELDS - Finance & Pricing
+    total_cost: "",
+    currency: "USD",
+    payment_status: "Pending",
+    tax_amount: "",
+    insurance: false,
+    insurance_value: "",
+    declared_value: "",
+    
+    // NEW FIELDS - Delivery
+    pickup_datetime: "",
+    expected_delivery_datetime: "",
+    delivery_datetime: "",
+    delivery_signature_required: false,
+    
+    
+    // NEW FIELDS - Weight & Category
+    shipment_category: "General",
+    special_handling: [],
+    
+    // NEW FIELDS - Customs (for international)
+    hs_code: "",
+    country_of_manufacture: "",
+    customs_declaration_description: "",
+    incoterm: "EXW",
+    
+    // Admin
+    admin_comment: "",
+    reason_for_status_change: ""
   });
+  
 
   const [products, setProducts] = useState([
     { piece_type: "", description: "", qty: 1, length_cm: 0, width_cm: 0, height_cm: 0, weight_kg: 0 },
   ]);
 
+  const [specialHandlingOptions] = useState([
+    "Fragile", "Perishable", "Hazardous", "Temperature Controlled", "High Value"
+  ]);
+
   function generateCarrierRef() {
     return "LOG" + Math.floor(100000000000 + Math.random() * 900000000000);
   }
+function generateClientId() {
+  return uuidv4();
+}
+
+function generateVehicleId() {
+  return "VEH-" + Math.floor(1000 + Math.random() * 9000);
+}
+
+function generateDriverId() {
+  return "DRV-" + Math.floor(1000 + Math.random() * 9000);
+}
+
+// Helper function to get tax rate by destination city/country
+function getTaxRate(destCity, destCountry) {
+  const defaultTaxRate = 0.10; // fallback default 10%
+
+  // US State-level tax rates
+  const USStateRates = {
+    'New York': 0.08875,
+    'California': 0.0725,
+    'Texas': 0.0625,
+    'Florida': 0.06,
+    'Illinois': 0.0625,
+  };
+
+  // Country-level tax rates
+  const countryRates = {
+    'United States': 0.07, 
+    'United Kingdom': 0.20,
+    'Germany': 0.19,
+    'France': 0.20,
+    'Canada': 0.05,
+    'Australia': 0.10,
+    'Turkey': 0.18,
+  };
+
+  // Check for US state-specific rate
+  if (destCountry === 'United States' && destCity in USStateRates) {
+    return USStateRates[destCity];
+  }
+
+  // Check country-level rate
+  if (destCountry in countryRates) {
+    return countryRates[destCountry];
+  }
+
+  // Fallback default
+  return defaultTaxRate;
+}
+
+// Function to calculate base shipping fee
+function calculateBaseShipping(weight, shipmentType) {
+  const baseRatePerKg = shipmentType === 'air' ? 10 : 5; // example: air more expensive than sea
+  return weight * baseRatePerKg;
+}
+
+// Main function to auto-calculate tax and total cost
+function calculateTotalCost(form) {
+  const declaredValue = parseFloat(form.declared_value) || 0;
+  const weight = parseFloat(form.weight) || 0;
+  const shipmentType = form.shipment_type || 'air';
+  
+  // 1️⃣ Calculate tax
+  const taxAmount = declaredValue * getTaxRate(form.destCity, form.destCountry);
+  
+  // 2️⃣ Base shipping
+  const baseShipping = calculateBaseShipping(weight, shipmentType);
+  
+  // 3️⃣ Insurance fee (1% of declared value if selected)
+  const insuranceFee = form.insurance ? declaredValue * 0.01 : 0;
+  
+  // 4️⃣ Special handling fee (optional)
+  const handlingFee = form.special_handling ? form.special_handling.length * 50 : 0;
+  
+  // 5️⃣ Total cost
+  const totalCost = baseShipping + insuranceFee + handlingFee + taxAmount;
+    return {
+    taxAmount: taxAmount.toFixed(2),
+    totalCost: totalCost.toFixed(2)
+  };
+}
+
+  // Check if shipment is international
+  const isInternational = useMemo(() => {
+    if (!form.originCity || !form.destCity) return false;
+    const originCountry = form.originCity.split(', ').pop();
+    const destCountry = form.destCity.split(', ').pop();
+    return originCountry !== destCountry;
+  }, [form.originCity, form.destCity]);
+
+  // Auto-calculate total weight and volumetric weight
+  const calculatedWeights = useMemo(() => {
+    const totalWeight = products.reduce((sum, p) => sum + (parseFloat(p.weight_kg) || 0) * (parseInt(p.qty) || 1), 0);
+    const volumetricWeight = products.reduce((sum, p) => {
+      const vol = (parseFloat(p.length_cm) || 0) * (parseFloat(p.width_cm) || 0) * (parseFloat(p.height_cm) || 0);
+      return sum + (vol / 5000) * (parseInt(p.qty) || 1);
+    }, 0);
+    return { totalWeight: totalWeight.toFixed(2), volumetricWeight: volumetricWeight.toFixed(2) };
+  }, [products]);
 
   // Load cities data
   useEffect(() => {
@@ -97,7 +244,28 @@ export default function AdminForm({ onSuccess }) {
   }, [cities, destSearch]);
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value, type, checked } = e.target;
+
+  const updatedForm = {
+    ...form,
+    [name]: type === 'checkbox' ? checked : value
+  };
+  
+  const { taxAmount, totalCost } = calculateTotalCost(updatedForm);
+  
+  setForm({
+    ...updatedForm,
+    tax_amount: taxAmount,
+    total_cost: totalCost
+  });
+}
+
+  const handleSpecialHandlingToggle = (option) => {
+    const current = form.special_handling || [];
+    const updated = current.includes(option)
+      ? current.filter(h => h !== option)
+      : [...current, option];
+    setForm({ ...form, special_handling: updated });
   };
 
   const handleProductChange = (index, field, value) => {
@@ -140,11 +308,40 @@ export default function AdminForm({ onSuccess }) {
   };
 
   const handleSubmit = async () => {
+    // Validation
+    if (!form.name || !form.agency || !form.originCity || !form.destCity) {
+      alert("Please fill in all required fields");
+      return;
+    }
+
+    if (isInternational && (!form.hs_code || !form.incoterm)) {
+      alert("International shipments require HS Code and Incoterm");
+      return;
+    }
+
+    if (form.insurance && !form.insurance_value) {
+      alert("Insurance value is required when insurance is enabled");
+      return;
+    }
+
+    if (parseFloat(form.declared_value) > 5 && !form.insurance) {
+      alert("Insurance is required for shipments with declared value over $5");
+      return;
+    }
+
     const payload = {
       ...form,
       products,
       current_lat: form.origin_lat,
       current_lng: form.origin_lng,
+      total_weight: calculatedWeights.totalWeight,
+      volumetric_weight: calculatedWeights.volumetricWeight,
+      tracking_history: [{
+        event: "Shipment Created",
+        location: form.location || form.originCity,
+        timestamp: new Date().toISOString(),
+        reason: form.reason_for_status_change || "Initial shipment creation"
+      }]
     };
 
     const res = await fetch("/api/shipments", {
@@ -158,7 +355,7 @@ export default function AdminForm({ onSuccess }) {
       return;
     }
 
-    // Reset
+    // Reset form
     setForm({
       name: "",
       agency: "",
@@ -179,10 +376,35 @@ export default function AdminForm({ onSuccess }) {
       shipment_type: "Truckload",
       shipment_mode: "Land Shipping",
       carrier_ref: generateCarrierRef(),
+       client_id: generateClientId(),
+  current_vehicle_id: generateVehicleId(),
+  current_driver_id: generateDriverId(),
       payment_mode: "CASH",
-      admin_comment: "",
       status: "In Transit",
-      location: ""
+      location: "",
+      client_id: "",
+     
+      total_cost: "",
+      currency: "USD",
+      payment_status: "Pending",
+      tax_amount: "",
+      insurance: false,
+      insurance_value: "",
+      declared_value: "",
+      pickup_datetime: "",
+      expected_delivery_datetime: "",
+        delivery_datetime: "",
+      delivery_signature_required: false,
+      current_vehicle_id: "",
+      current_driver_id: "",
+      shipment_category: "General",
+      special_handling: [],
+      hs_code: "",
+      country_of_manufacture: "",
+      customs_declaration_description: "",
+      incoterm: "EXW",
+      admin_comment: "",
+      reason_for_status_change: ""
     });
     setOriginSearch("");
     setDestSearch("");
@@ -204,6 +426,131 @@ export default function AdminForm({ onSuccess }) {
   return (
     <div className="space-y-8 p-6">
       
+      {/* Client Context Section */}
+      <div className="bg-gradient-to-r from-indigo-50 to-indigo-100 p-6 rounded-xl border border-indigo-200">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="bg-indigo-500 p-2 rounded-lg">
+            <User className="w-5 h-5 text-white" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900">Client Context</h3>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className={labelClass}>Client ID</label>
+            <input 
+               className={`${inputClass} bg-gray-100`}
+  name="client_id"
+  value={form.client_id}
+  readOnly
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Finance & Pricing Section */}
+      <div className="bg-gradient-to-r from-emerald-50 to-emerald-100 p-6 rounded-xl border border-emerald-200">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="bg-emerald-500 p-2 rounded-lg">
+            <DollarSign className="w-5 h-5 text-white" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900">Finance & Pricing</h3>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label className={labelClass}>Total Cost</label>
+            <input 
+              type="number"
+              step="0.01"
+              className={inputClass} 
+              name="total_cost" 
+              placeholder="0.00" 
+              value={form.total_cost} 
+              onChange={handleChange} 
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>Currency</label>
+            <select className={inputClass} name="currency" value={form.currency} onChange={handleChange}>
+              <option>USD</option>
+              <option>EUR</option>
+              <option>GBP</option>
+              <option>JPY</option>
+              <option>CAD</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={labelClass}>Payment Status</label>
+            <select className={inputClass} name="payment_status" value={form.payment_status} onChange={handleChange}>
+              <option>Pending</option>
+              <option>Paid</option>
+              <option>COD</option>
+              <option>Failed</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={labelClass}>Tax Amount</label>
+            <input 
+              type="number"
+              step="0.01"
+              className={inputClass} 
+              name="tax_amount" 
+              placeholder="Auto-calculated" 
+              value={form.tax_amount} 
+              onChange={handleChange} 
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>Declared Value</label>
+            <input 
+              type="number"
+              step="0.01"
+              className={inputClass} 
+              name="declared_value" 
+              placeholder="0.00" 
+              value={form.declared_value} 
+              onChange={handleChange} 
+            />
+            {parseFloat(form.declared_value) > 5 && !form.insurance && (
+              <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                Insurance required for value &gt; $5
+              </p>
+            )}
+          </div>
+
+          <div className="md:col-span-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="checkbox"
+                name="insurance"
+                checked={form.insurance}
+                onChange={handleChange}
+                className="w-5 h-5 text-purple-600 rounded focus:ring-2 focus:ring-purple-500"
+              />
+              <Shield className="w-5 h-5 text-emerald-600" />
+              <span className={labelClass.replace('block', 'inline')}>Enable Insurance Coverage</span>
+            </label>
+            {form.insurance && (
+              <input 
+                type="number"
+                step="0.01"
+                className={`${inputClass} mt-2`}
+                name="insurance_value" 
+                placeholder="Insurance coverage amount" 
+                value={form.insurance_value} 
+                onChange={handleChange} 
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Shipment Details Section */}
       <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200">
         <div className="flex items-center gap-3 mb-6">
@@ -267,11 +614,11 @@ export default function AdminForm({ onSuccess }) {
                       onClick={() => selectOriginCity(city)}
                     >
                       <div className="font-medium text-gray-900">{city.name}</div>
-                      <div className="text-sm text-gray-500">{city.country} • Lat: {city.lat}, Lng: {city.lng}</div>
+                      <div className="text-sm text-gray-500">{city.country}</div>
                     </button>
                   ))
                 ) : (
-                  <div className="px-4 py-3 text-gray-500 text-sm">No cities found. Try a different search.</div>
+                  <div className="px-4 py-3 text-gray-500 text-sm">No cities found.</div>
                 )}
               </div>
             )}
@@ -308,11 +655,11 @@ export default function AdminForm({ onSuccess }) {
                       onClick={() => selectDestCity(city)}
                     >
                       <div className="font-medium text-gray-900">{city.name}</div>
-                      <div className="text-sm text-gray-500">{city.country} • Lat: {city.lat}, Lng: {city.lng}</div>
+                      <div className="text-sm text-gray-500">{city.country}</div>
                     </button>
                   ))
                 ) : (
-                  <div className="px-4 py-3 text-gray-500 text-sm">No cities found. Try a different search.</div>
+                  <div className="px-4 py-3 text-gray-500 text-sm">No cities found.</div>
                 )}
               </div>
             )}
@@ -331,6 +678,18 @@ export default function AdminForm({ onSuccess }) {
               value={form.estimated_hours} 
               onChange={handleChange} 
             />
+          </div>
+
+          <div>
+            <label className={labelClass}>Shipment Category</label>
+            <select className={inputClass} name="shipment_category" value={form.shipment_category} onChange={handleChange}>
+              <option>General</option>
+              <option>Express</option>
+              <option>Fragile</option>
+              <option>Perishable</option>
+              <option>Hazardous</option>
+              <option>High Value</option>
+            </select>
           </div>
 
           <div>
@@ -379,6 +738,67 @@ export default function AdminForm({ onSuccess }) {
           </div>
 
           <div>
+            <label className={labelClass}>Vehicle ID</label>
+            <input 
+              className={`${inputClass} bg-gray-100`}
+  name="current_vehicle_id"
+  value={form.current_vehicle_id}
+  readOnly
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>Driver ID</label>
+            <input 
+              className={`${inputClass} bg-gray-100`}
+  name="current_driver_id"
+  value={form.current_driver_id}
+  readOnly
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>Pickup Date & Time</label>
+            <input 
+              type="datetime-local"
+              className={inputClass} 
+              name="pickup_datetime" 
+              value={form.pickup_datetime} 
+              onChange={handleChange} 
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>Expected Delivery Date & Time</label>
+            <input 
+              type="datetime-local"
+              className={inputClass} 
+              name="expected_delivery_datetime" 
+              value={form.expected_delivery_datetime} 
+               onChange={(e) =>
+    setForm({
+      ...form,
+      expected_delivery_datetime: e.target.value,
+      delivery_datetime: e.target.value,
+    })
+  }
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input 
+              type="checkbox"
+              name="delivery_signature_required"
+              checked={form.delivery_signature_required}
+              onChange={handleChange}
+              className="w-5 h-5 text-purple-600 rounded focus:ring-2 focus:ring-purple-500"
+            />
+            <label className="text-sm font-semibold text-gray-700">
+              Signature Required on Delivery
+            </label>
+          </div>
+
+          <div>
             <label className={labelClass}>Initial Status *</label>
             <div className="flex gap-3 items-center">
               <select 
@@ -395,6 +815,132 @@ export default function AdminForm({ onSuccess }) {
                 {form.status}
               </span>
             </div>
+          </div>
+
+          <div>
+            <label className={labelClass}>Reason for Status</label>
+            <input 
+              className={inputClass} 
+              name="reason_for_status_change" 
+              placeholder="e.g., Initial creation, weather delay..." 
+              value={form.reason_for_status_change} 
+              onChange={handleChange} 
+            />
+          </div>
+        </div>
+
+        {/* Special Handling */}
+        <div className="mt-4">
+          <label className={labelClass}>Special Handling</label>
+          <div className="flex flex-wrap gap-2">
+            {specialHandlingOptions.map(option => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => handleSpecialHandlingToggle(option)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                  (form.special_handling || []).includes(option)
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Customs & International (Conditional) */}
+      {isInternational && (
+        <div className="bg-gradient-to-r from-amber-50 to-amber-100 p-6 rounded-xl border border-amber-200">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="bg-amber-500 p-2 rounded-lg">
+              <Globe className="w-5 h-5 text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Customs & International Shipping</h3>
+            <span className="ml-auto bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold">REQUIRED</span>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>HS Code *</label>
+              <input 
+                className={inputClass} 
+                name="hs_code" 
+                placeholder="e.g., 8471.30.01" 
+                value={form.hs_code} 
+                onChange={handleChange} 
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>Incoterm *</label>
+              <select className={inputClass} name="incoterm" value={form.incoterm} onChange={handleChange}>
+                <option>DAP</option>
+                <option>DDP</option>
+                <option>EXW</option>
+                <option>FOB</option>
+                <option>CIF</option>
+                <option>CPT</option>
+              </select>
+            </div>
+
+            <div>
+              <label className={labelClass}>Country of Manufacture</label>
+              <input 
+                className={inputClass} 
+                name="country_of_manufacture" 
+                placeholder="e.g., China, USA, Germany" 
+                value={form.country_of_manufacture} 
+                onChange={handleChange} 
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className={labelClass}>Customs Declaration Description</label>
+              <textarea 
+                className={inputClass} 
+                name="customs_declaration_description" 
+                placeholder="Detailed description of goods for customs" 
+                value={form.customs_declaration_description} 
+                onChange={handleChange} 
+                rows="2"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Calculated Weights Display */}
+      <div className="bg-gradient-to-r from-cyan-50 to-cyan-100 p-6 rounded-xl border border-cyan-200">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="bg-cyan-500 p-2 rounded-lg">
+            <Package className="w-5 h-5 text-white" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900">Weight Calculations (Auto-Computed)</h3>
+        </div>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white p-4 rounded-xl border-2 border-cyan-200">
+            <p className="text-xs text-gray-600 mb-1">Total Weight</p>
+            <p className="text-2xl font-bold text-cyan-600">{calculatedWeights.totalWeight} kg</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border-2 border-cyan-200">
+            <p className="text-xs text-gray-600 mb-1">Volumetric Weight</p>
+            <p className="text-2xl font-bold text-cyan-600">{calculatedWeights.volumetricWeight} kg</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border-2 border-cyan-200">
+            <p className="text-xs text-gray-600 mb-1">Chargeable Weight</p>
+            <p className="text-2xl font-bold text-purple-600">
+              {Math.max(parseFloat(calculatedWeights.totalWeight), parseFloat(calculatedWeights.volumetricWeight)).toFixed(2)} kg
+            </p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border-2 border-cyan-200">
+            <p className="text-xs text-gray-600 mb-1">Total Pieces</p>
+            <p className="text-2xl font-bold text-gray-900">
+              {products.reduce((sum, p) => sum + (parseInt(p.qty) || 0), 0)}
+            </p>
           </div>
         </div>
       </div>
@@ -622,7 +1168,10 @@ export default function AdminForm({ onSuccess }) {
 
       {/* Admin Notes */}
       <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-        <h3 className="text-xl font-bold text-gray-900 mb-4">Admin Notes (Optional)</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <FileText className="w-5 h-5 text-gray-700" />
+          Admin Notes (Optional)
+        </h3>
         <textarea 
           className={inputClass} 
           name="admin_comment" 
@@ -631,7 +1180,7 @@ export default function AdminForm({ onSuccess }) {
           onChange={handleChange} 
           rows="3"
         />
-        <p className="text-sm text-gray-500 mt-2">These notes are for internal use and won't be sent to customers initially.</p>
+        <p className="text-sm text-gray-500 mt-2">These notes are for internal use and will be visible to customers.</p>
       </div>
 
       {/* Submit Button */}
@@ -654,7 +1203,7 @@ export default function AdminForm({ onSuccess }) {
       )}
 
       {citiesLoaded && (
-        <div className="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg">
+        <div className="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg animate-pulse">
           ✓ Cities loaded successfully!
         </div>
       )}

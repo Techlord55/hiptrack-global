@@ -21,15 +21,73 @@ export async function POST(req) {
         }))
       : []
 
-    // ✅ CRITICAL FIX: Save BOTH origin and current coordinates
+    // Calculate weights
+    const totalWeight = products.reduce((sum, p) => 
+      sum + (parseFloat(p.weight_kg) || 0) * (parseInt(p.qty) || 1), 0
+    )
+    
+    const volumetricWeight = products.reduce((sum, p) => {
+      const vol = (parseFloat(p.length_cm) || 0) * 
+                  (parseFloat(p.width_cm) || 0) * 
+                  (parseFloat(p.height_cm) || 0)
+      return sum + (vol / 5000) * (parseInt(p.qty) || 1)
+    }, 0)
+
+    // Auto-apply business rules
+    const declaredValue = parseFloat(data.declared_value) || 0
+    const requiresInsurance = declaredValue > 5
+    
+    if (requiresInsurance && !data.insurance) {
+      return NextResponse.json({ 
+        error: 'Insurance is required for shipments with declared value over $5',
+        field: 'insurance'
+      }, { status: 400 })
+    }
+
+    // Check if international
+    const originCountry = data.originCity?.split(', ').pop()
+    const destCountry = data.destCity?.split(', ').pop()
+    const isInternational = originCountry && destCountry && originCountry !== destCountry
+
+    if (isInternational && (!data.hs_code || !data.incoterm)) {
+      return NextResponse.json({ 
+        error: 'HS Code and Incoterm are required for international shipments',
+        field: isInternational ? 'hs_code' : 'incoterm'
+      }, { status: 400 })
+    }
+
+    // Initialize tracking history
+    const trackingHistory = data.tracking_history || [{
+      event: 'Shipment Created',
+      location: data.location || data.originCity || 'Origin',
+      timestamp: new Date().toISOString(),
+      reason: data.reason_for_status_change || 'Initial shipment creation',
+      status: data.status || 'In Transit'
+    }]
+
+    // Build comprehensive payload with all new fields
     const payload = {
       code,
+      
+      // Basic Info
       name: data.name || '',
       agency: data.agency || '',
       
-      // Products/Package details are now stored in the JSONB 'products' column
+      // Products (JSONB column)
       products, 
-
+      
+      // Client Context
+      client_id: data.client_id || null,
+      
+      // Finance & Pricing
+      total_cost: data.total_cost ? parseFloat(data.total_cost) : null,
+      currency: data.currency || 'USD',
+      payment_status: data.payment_status || 'Pending',
+      tax_amount: data.tax_amount ? parseFloat(data.tax_amount) : null,
+      insurance: data.insurance || false,
+      insurance_value: data.insurance_value ? parseFloat(data.insurance_value) : null,
+      declared_value: declaredValue,
+      
       // Shipper/Receiver
       shipper_name: data.shipper_name || '',
       shipper_address: data.shipper_address || '',
@@ -39,19 +97,40 @@ export async function POST(req) {
       receiver_phone: data.receiver_phone || null,
       receiver_email: data.receiver_email || null,
       
-      // ✅ ORIGIN COORDINATES (Starting point - never changes)
+      // Coordinates
       origin_lat: data.origin_lat ? parseFloat(data.origin_lat) : null,
       origin_lng: data.origin_lng ? parseFloat(data.origin_lng) : null,
-      
-      // ✅ CURRENT COORDINATES (Starts at origin, updates as ship moves)
-      current_lat: data.current_lat ? parseFloat(data.current_lat) : null,
-      current_lng: data.current_lng ? parseFloat(data.current_lng) : null,
-      
-      // ✅ DESTINATION COORDINATES
+      current_lat: data.current_lat ? parseFloat(data.current_lat) : data.origin_lat ? parseFloat(data.origin_lat) : null,
+      current_lng: data.current_lng ? parseFloat(data.current_lng) : data.origin_lng ? parseFloat(data.origin_lng) : null,
       dest_lat: data.dest_lat ? parseFloat(data.dest_lat) : null,
       dest_lng: data.dest_lng ? parseFloat(data.dest_lng) : null,
       
-      // Time/Status
+      // Tracking & Delivery
+      pickup_datetime: data.pickup_datetime || null,
+      expected_delivery_datetime: data.expected_delivery_datetime || null,
+       
+      delivery_datetime: data.delivery_datetime || null,
+      tracking_history: trackingHistory,
+      current_vehicle_id: data.current_vehicle_id || null,
+      current_driver_id: data.current_driver_id || null,
+      transit_hubs: data.transit_hubs || [],
+      delivery_signature_required: data.delivery_signature_required || false,
+      
+      // Weight & Category
+      total_weight: totalWeight.toFixed(2),
+      volumetric_weight: volumetricWeight.toFixed(2),
+      shipment_category: data.shipment_category || 'General',
+      special_handling: Array.isArray(data.special_handling) ? data.special_handling : [],
+      
+      // Customs (for international)
+      hs_code: data.hs_code || null,
+      country_of_manufacture: data.country_of_manufacture || null,
+      customs_docs: data.customs_docs || [],
+      customs_declaration_description: data.customs_declaration_description || null,
+      incoterm: data.incoterm || null,
+      
+      // Status
+      reason_for_status_change: data.reason_for_status_change || 'Initial creation',
       estimated_hours: data.estimated_hours ? parseInt(data.estimated_hours, 10) : null,
       progress: 0,
       status: data.status || 'In Transit',
@@ -62,8 +141,8 @@ export async function POST(req) {
       payment_mode: data.payment_mode || 'CASH',
       carrier_ref: data.carrier_ref || `LOG${Math.floor(100000000000 + Math.random() * 900000000000)}`,
       location: data.location || '',
-
-      // Admin notes
+      
+      // Admin
       admin_comment: data.admin_comment || null,
       
       // Timestamps
@@ -71,11 +150,16 @@ export async function POST(req) {
       updated_at: new Date().toISOString(),
     }
 
-    console.log('Creating shipment with payload:', {
+    console.log('Creating shipment with enhanced payload:', {
       code: payload.code,
-      origin: { lat: payload.origin_lat, lng: payload.origin_lng },
-      current: { lat: payload.current_lat, lng: payload.current_lng },
-      dest: { lat: payload.dest_lat, lng: payload.dest_lng },
+      weights: { total: payload.total_weight, volumetric: payload.volumetric_weight },
+      insurance: payload.insurance,
+      international: isInternational,
+      coordinates: {
+        origin: { lat: payload.origin_lat, lng: payload.origin_lng },
+        current: { lat: payload.current_lat, lng: payload.current_lng },
+        dest: { lat: payload.dest_lat, lng: payload.dest_lng },
+      }
     })
 
     const { error } = await supabaseAdmin.from('shipments').insert([payload])
@@ -88,10 +172,13 @@ export async function POST(req) {
     return NextResponse.json({ 
       code, 
       message: 'Shipment created successfully',
-      coordinates: {
-        origin: { lat: payload.origin_lat, lng: payload.origin_lng },
-        current: { lat: payload.current_lat, lng: payload.current_lng },
-        destination: { lat: payload.dest_lat, lng: payload.dest_lng },
+      summary: {
+        totalWeight: payload.total_weight,
+        volumetricWeight: payload.volumetric_weight,
+        chargeableWeight: Math.max(parseFloat(payload.total_weight), parseFloat(payload.volumetric_weight)).toFixed(2),
+        requiresInsurance: requiresInsurance,
+        isInternational: isInternational,
+        pieces: products.reduce((sum, p) => sum + (parseInt(p.qty) || 0), 0)
       }
     })
   } catch (err) {
