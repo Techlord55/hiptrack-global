@@ -136,6 +136,8 @@ export default function Navbar({ showFullNav = true }) {
           <NavLink href="/track" onClick={() => setMobileMenuOpen(false)}>Tracking</NavLink>
           <NavLink href="/support" onClick={() => setMobileMenuOpen(false)}>Support</NavLink>
           <NavLink href="/about" onClick={() => setMobileMenuOpen(false)}>About Us</NavLink>
+         <NavLink href="/" onClick={() => setMobileMenuOpen(false)}>Home</NavLink>
+
         </div>
       )}
     </header>
