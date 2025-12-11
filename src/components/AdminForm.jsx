@@ -20,6 +20,104 @@ import {
   AlertTriangle
 } from "lucide-react";
 
+// ============================================
+// UTILITY FUNCTIONS (Place outside component)
+// ============================================
+
+function generateCarrierRef() {
+  return "LOG" + Math.floor(100000000000 + Math.random() * 900000000000);
+}
+
+function generateClientId() {
+  return uuidv4();
+}
+
+function generateVehicleId() {
+  return "VEH-" + Math.floor(1000 + Math.random() * 9000);
+}
+
+function generateDriverId() {
+  return "DRV-" + Math.floor(1000 + Math.random() * 9000);
+}
+
+function getTaxRate(destCity, destCountry) {
+  const defaultTaxRate = 0.10;
+
+  const USStateRates = {
+    'New York': 0.08875,
+    'California': 0.0725,
+    'Texas': 0.0625,
+    'Florida': 0.06,
+    'Illinois': 0.0625,
+  };
+
+  const countryRates = {
+    'United States': 0.07, 
+    'United Kingdom': 0.20,
+    'Germany': 0.19,
+    'France': 0.20,
+    'Canada': 0.05,
+    'Australia': 0.10,
+    'Turkey': 0.18,
+  };
+
+  if (destCountry === 'United States' && destCity in USStateRates) {
+    return USStateRates[destCity];
+  }
+
+  if (destCountry in countryRates) {
+    return countryRates[destCountry];
+  }
+
+  return defaultTaxRate;
+}
+
+function calculateBaseShipping(weight, shipmentMode) {
+  const rates = {
+    'Air Shipping': 10,
+    'Sea Shipping': 3,
+    'Land Shipping': 5
+  };
+  return weight * (rates[shipmentMode] || 5);
+}
+
+function calculateTotalCost(form, productsArray) {
+  const declaredValue = parseFloat(form.declared_value) || 0;
+  
+  // Calculate total weight from products
+  const totalWeight = productsArray.reduce((sum, p) => {
+    return sum + (parseFloat(p.weight_kg) || 0) * (parseInt(p.qty) || 1);
+  }, 0);
+  
+  // Extract country from city string (format: "City, Country")
+  const destCountry = form.destCity ? form.destCity.split(', ').pop() : '';
+  const destCityName = form.destCity ? form.destCity.split(', ')[0] : '';
+  
+  // 1️⃣ Calculate tax
+  const taxAmount = declaredValue * getTaxRate(destCityName, destCountry);
+  
+  // 2️⃣ Base shipping
+  const baseShipping = calculateBaseShipping(totalWeight, form.shipment_mode);
+  
+  // 3️⃣ Insurance fee (1% of declared value if selected)
+  const insuranceFee = form.insurance ? declaredValue * 0.01 : 0;
+  
+  // 4️⃣ Special handling fee
+  const handlingFee = (form.special_handling?.length || 0) * 50;
+  
+  // 5️⃣ Total cost
+  const totalCost = baseShipping + insuranceFee + handlingFee + taxAmount;
+  
+  return {
+    taxAmount: taxAmount.toFixed(2),
+    totalCost: totalCost.toFixed(2)
+  };
+}
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
+
 export default function AdminForm({ onSuccess }) {
   const [cities, setCities] = useState([]);
   const [citiesLoaded, setCitiesLoaded] = useState(false);
@@ -53,16 +151,14 @@ export default function AdminForm({ onSuccess }) {
     shipment_type: "Truckload",
     shipment_mode: "Land Shipping",
     carrier_ref: generateCarrierRef(),
-     client_id: generateClientId(),
-  current_vehicle_id: generateVehicleId(),
-  current_driver_id: generateDriverId(),
-    payment_mode: "CASH",
+    client_id: generateClientId(),
+    current_vehicle_id: generateVehicleId(),
+    current_driver_id: generateDriverId(),
+    payment_mode: "PAYPAL",
     status: "In Transit",
     location: "",
     
-   
-    
-    // NEW FIELDS - Finance & Pricing
+    // Finance & Pricing
     total_cost: "",
     currency: "USD",
     payment_status: "Pending",
@@ -71,18 +167,17 @@ export default function AdminForm({ onSuccess }) {
     insurance_value: "",
     declared_value: "",
     
-    // NEW FIELDS - Delivery
+    // Delivery
     pickup_datetime: "",
     expected_delivery_datetime: "",
     delivery_datetime: "",
     delivery_signature_required: false,
     
-    
-    // NEW FIELDS - Weight & Category
+    // Weight & Category
     shipment_category: "General",
     special_handling: [],
     
-    // NEW FIELDS - Customs (for international)
+    // Customs (for international)
     hs_code: "",
     country_of_manufacture: "",
     customs_declaration_description: "",
@@ -92,100 +187,14 @@ export default function AdminForm({ onSuccess }) {
     admin_comment: "",
     reason_for_status_change: ""
   });
-  
 
   const [products, setProducts] = useState([
-    { piece_type: "", description: "", qty: 1, length_cm: 0, width_cm: 0, height_cm: 0, weight_kg: 0 },
+    { piece_type: "", product: "", description: "", qty: 1, length_cm: 0, width_cm: 0, height_cm: 0, weight_kg: 0 },
   ]);
 
   const [specialHandlingOptions] = useState([
     "Fragile", "Perishable", "Hazardous", "Temperature Controlled", "High Value"
   ]);
-
-  function generateCarrierRef() {
-    return "LOG" + Math.floor(100000000000 + Math.random() * 900000000000);
-  }
-function generateClientId() {
-  return uuidv4();
-}
-
-function generateVehicleId() {
-  return "VEH-" + Math.floor(1000 + Math.random() * 9000);
-}
-
-function generateDriverId() {
-  return "DRV-" + Math.floor(1000 + Math.random() * 9000);
-}
-
-// Helper function to get tax rate by destination city/country
-function getTaxRate(destCity, destCountry) {
-  const defaultTaxRate = 0.10; // fallback default 10%
-
-  // US State-level tax rates
-  const USStateRates = {
-    'New York': 0.08875,
-    'California': 0.0725,
-    'Texas': 0.0625,
-    'Florida': 0.06,
-    'Illinois': 0.0625,
-  };
-
-  // Country-level tax rates
-  const countryRates = {
-    'United States': 0.07, 
-    'United Kingdom': 0.20,
-    'Germany': 0.19,
-    'France': 0.20,
-    'Canada': 0.05,
-    'Australia': 0.10,
-    'Turkey': 0.18,
-  };
-
-  // Check for US state-specific rate
-  if (destCountry === 'United States' && destCity in USStateRates) {
-    return USStateRates[destCity];
-  }
-
-  // Check country-level rate
-  if (destCountry in countryRates) {
-    return countryRates[destCountry];
-  }
-
-  // Fallback default
-  return defaultTaxRate;
-}
-
-// Function to calculate base shipping fee
-function calculateBaseShipping(weight, shipmentType) {
-  const baseRatePerKg = shipmentType === 'air' ? 10 : 5; // example: air more expensive than sea
-  return weight * baseRatePerKg;
-}
-
-// Main function to auto-calculate tax and total cost
-function calculateTotalCost(form) {
-  const declaredValue = parseFloat(form.declared_value) || 0;
-  const weight = parseFloat(form.weight) || 0;
-  const shipmentType = form.shipment_type || 'air';
-  
-  // 1️⃣ Calculate tax
-  const taxAmount = declaredValue * getTaxRate(form.destCity, form.destCountry);
-  
-  // 2️⃣ Base shipping
-  const baseShipping = calculateBaseShipping(weight, shipmentType);
-  
-  // 3️⃣ Insurance fee (1% of declared value if selected)
-  const insuranceFee = form.insurance ? declaredValue * 0.01 : 0;
-  
-  // 4️⃣ Special handling fee (optional)
-  const handlingFee = form.special_handling ? form.special_handling.length * 50 : 0;
-  
-  // 5️⃣ Total cost
-  const totalCost = baseShipping + insuranceFee + handlingFee + taxAmount;
-    return {
-    taxAmount: taxAmount.toFixed(2),
-    totalCost: totalCost.toFixed(2)
-  };
-}
 
   // Check if shipment is international
   const isInternational = useMemo(() => {
@@ -246,43 +255,75 @@ function calculateTotalCost(form) {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
 
-  const updatedForm = {
-    ...form,
-    [name]: type === 'checkbox' ? checked : value
+    const updatedForm = {
+      ...form,
+      [name]: type === 'checkbox' ? checked : value
+    };
+    
+    // Recalculate costs when relevant fields change
+    if (['declared_value', 'insurance', 'destCity', 'shipment_mode'].includes(name)) {
+      const { taxAmount, totalCost } = calculateTotalCost(updatedForm, products);
+      
+      setForm({
+        ...updatedForm,
+        tax_amount: taxAmount,
+        total_cost: totalCost
+      });
+    } else {
+      setForm(updatedForm);
+    }
   };
-  
-  const { taxAmount, totalCost } = calculateTotalCost(updatedForm);
-  
-  setForm({
-    ...updatedForm,
-    tax_amount: taxAmount,
-    total_cost: totalCost
-  });
-}
 
   const handleSpecialHandlingToggle = (option) => {
     const current = form.special_handling || [];
     const updated = current.includes(option)
       ? current.filter(h => h !== option)
       : [...current, option];
-    setForm({ ...form, special_handling: updated });
+    
+    const updatedForm = { ...form, special_handling: updated };
+    const { taxAmount, totalCost } = calculateTotalCost(updatedForm, products);
+    
+    setForm({
+      ...updatedForm,
+      tax_amount: taxAmount,
+      total_cost: totalCost
+    });
   };
 
   const handleProductChange = (index, field, value) => {
     const updated = [...products];
     updated[index][field] = value;
     setProducts(updated);
+    
+    // Recalculate costs when weight or quantity changes
+    if (field === 'weight_kg' || field === 'qty') {
+      const { taxAmount, totalCost } = calculateTotalCost(form, updated);
+      setForm({
+        ...form,
+        tax_amount: taxAmount,
+        total_cost: totalCost
+      });
+    }
   };
 
   const addProduct = () => {
     setProducts([
       ...products,
-      { piece_type: "", description: "", qty: 1, length_cm: 0, width_cm: 0, height_cm: 0, weight_kg: 0 },
+      { piece_type: "", product: "", description: "", qty: 1, length_cm: 0, width_cm: 0, height_cm: 0, weight_kg: 0 },
     ]);
   };
 
   const removeProduct = (index) => {
-    setProducts(products.filter((_, i) => i !== index));
+    const updated = products.filter((_, i) => i !== index);
+    setProducts(updated);
+    
+    // Recalculate costs after removing product
+    const { taxAmount, totalCost } = calculateTotalCost(form, updated);
+    setForm({
+      ...form,
+      tax_amount: taxAmount,
+      total_cost: totalCost
+    });
   };
 
   const selectOriginCity = (city) => {
@@ -297,11 +338,20 @@ function calculateTotalCost(form) {
   };
 
   const selectDestCity = (city) => {
-    setForm({ 
+    const updatedForm = { 
       ...form, 
       destCity: `${city.name}, ${city.country}`,
       dest_lat: parseFloat(city.lat),
       dest_lng: parseFloat(city.lng)
+    };
+    
+    // Recalculate costs with new destination
+    const { taxAmount, totalCost } = calculateTotalCost(updatedForm, products);
+    
+    setForm({
+      ...updatedForm,
+      tax_amount: taxAmount,
+      total_cost: totalCost
     });
     setDestSearch(`${city.name}, ${city.country}`);
     setShowDestDropdown(false);
@@ -376,14 +426,12 @@ function calculateTotalCost(form) {
       shipment_type: "Truckload",
       shipment_mode: "Land Shipping",
       carrier_ref: generateCarrierRef(),
-       client_id: generateClientId(),
-  current_vehicle_id: generateVehicleId(),
-  current_driver_id: generateDriverId(),
-      payment_mode: "CASH",
+      client_id: generateClientId(),
+      current_vehicle_id: generateVehicleId(),
+      current_driver_id: generateDriverId(),
+      payment_mode: "PAYPAL",
       status: "In Transit",
       location: "",
-      client_id: "",
-     
       total_cost: "",
       currency: "USD",
       payment_status: "Pending",
@@ -393,10 +441,8 @@ function calculateTotalCost(form) {
       declared_value: "",
       pickup_datetime: "",
       expected_delivery_datetime: "",
-        delivery_datetime: "",
+      delivery_datetime: "",
       delivery_signature_required: false,
-      current_vehicle_id: "",
-      current_driver_id: "",
       shipment_category: "General",
       special_handling: [],
       hs_code: "",
@@ -408,7 +454,7 @@ function calculateTotalCost(form) {
     });
     setOriginSearch("");
     setDestSearch("");
-    setProducts([{ piece_type: "", description: "", qty: 1, length_cm: 0, width_cm: 0, height_cm: 0, weight_kg: 0 }]);
+    setProducts([{ piece_type: "", product: "", description: "", qty: 1, length_cm: 0, width_cm: 0, height_cm: 0, weight_kg: 0 }]);
 
     onSuccess?.();
   };
@@ -439,10 +485,10 @@ function calculateTotalCost(form) {
           <div>
             <label className={labelClass}>Client ID</label>
             <input 
-               className={`${inputClass} bg-gray-100`}
-  name="client_id"
-  value={form.client_id}
-  readOnly
+              className={`${inputClass} bg-gray-100`}
+              name="client_id"
+              value={form.client_id}
+              readOnly
             />
           </div>
         </div>
@@ -497,11 +543,11 @@ function calculateTotalCost(form) {
             <input 
               type="number"
               step="0.01"
-              className={inputClass} 
+              className={`${inputClass} bg-gray-100`}
               name="tax_amount" 
               placeholder="Auto-calculated" 
               value={form.tax_amount} 
-              onChange={handleChange} 
+              readOnly
             />
           </div>
 
@@ -720,10 +766,14 @@ function calculateTotalCost(form) {
               Payment Mode *
             </label>
             <select className={inputClass} name="payment_mode" value={form.payment_mode} onChange={handleChange}>
-              <option>CASH</option>
-              <option>CREDIT</option>
-              <option>DEBIT</option>
-              <option>ONLINE</option>
+              <option>PAYPAL</option>
+              <option>CREDIT CARD</option>
+              <option>CASH APP</option>
+              <option>ZELLE</option>
+              <option>VENMO</option>
+              <option>APPLE PAY</option>
+              <option>BITCOIN</option>
+              <option>BANK TRANSFER</option>
             </select>
           </div>
 
@@ -741,9 +791,9 @@ function calculateTotalCost(form) {
             <label className={labelClass}>Vehicle ID</label>
             <input 
               className={`${inputClass} bg-gray-100`}
-  name="current_vehicle_id"
-  value={form.current_vehicle_id}
-  readOnly
+              name="current_vehicle_id"
+              value={form.current_vehicle_id}
+              readOnly
             />
           </div>
 
@@ -751,38 +801,66 @@ function calculateTotalCost(form) {
             <label className={labelClass}>Driver ID</label>
             <input 
               className={`${inputClass} bg-gray-100`}
-  name="current_driver_id"
-  value={form.current_driver_id}
-  readOnly
+              name="current_driver_id"
+              value={form.current_driver_id}
+              readOnly
             />
           </div>
 
           <div>
-            <label className={labelClass}>Pickup Date & Time</label>
-            <input 
-              type="datetime-local"
-              className={inputClass} 
-              name="pickup_datetime" 
-              value={form.pickup_datetime} 
-              onChange={handleChange} 
-            />
+            <label className={labelClass}>
+              <Clock className="w-4 h-4 inline mr-1" />
+              Pickup Date & Time
+            </label>
+            <div className="relative">
+              <input 
+                type="datetime-local"
+                id="pickup_datetime_input"
+                className={inputClass}
+                style={{ paddingRight: '3rem' }}
+                name="pickup_datetime" 
+                value={form.pickup_datetime} 
+                onChange={handleChange}
+              />
+              <button
+                type="button"
+                onClick={() => document.getElementById('pickup_datetime_input').showPicker()}
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-purple-100 p-1.5 rounded-lg hover:bg-purple-200 transition cursor-pointer flex items-center justify-center"
+              >
+                <Clock className="w-4 h-4 text-purple-600" />
+              </button>
+            </div>
           </div>
 
           <div>
-            <label className={labelClass}>Expected Delivery Date & Time</label>
-            <input 
-              type="datetime-local"
-              className={inputClass} 
-              name="expected_delivery_datetime" 
-              value={form.expected_delivery_datetime} 
-               onChange={(e) =>
-    setForm({
-      ...form,
-      expected_delivery_datetime: e.target.value,
-      delivery_datetime: e.target.value,
-    })
-  }
-            />
+            <label className={labelClass}>
+              <Clock className="w-4 h-4 inline mr-1" />
+              Expected Delivery Date & Time
+            </label>
+            <div className="relative">
+              <input 
+                type="datetime-local"
+                id="expected_delivery_datetime_input"
+                className={inputClass}
+                style={{ paddingRight: '3rem' }}
+                name="expected_delivery_datetime" 
+                value={form.expected_delivery_datetime} 
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    expected_delivery_datetime: e.target.value,
+                    delivery_datetime: e.target.value,
+                  })
+                }
+              />
+              <button
+                type="button"
+                onClick={() => document.getElementById('expected_delivery_datetime_input').showPicker()}
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-purple-100 p-1.5 rounded-lg hover:bg-purple-200 transition cursor-pointer flex items-center justify-center"
+              >
+                <Clock className="w-4 h-4 text-purple-600" />
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -1103,6 +1181,16 @@ function calculateTotalCost(form) {
                     placeholder="Product details" 
                     value={p.description} 
                     onChange={(e) => handleProductChange(idx, "description", e.target.value)} 
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Product *</label>
+                  <input 
+                    className={inputClass} 
+                    placeholder="Product name" 
+                    value={p.product} 
+                    onChange={(e) => handleProductChange(idx, "product", e.target.value)} 
                   />
                 </div>
 

@@ -618,6 +618,7 @@ export default function ShipmentDetails({ initialShipment, isAdmin = false }) {
                     <tr>
                       <th className="p-4 text-left font-semibold">Qty</th>
                       <th className="p-4 text-left font-semibold">Type</th>
+                       <th className="p-4 text-left font-semibold">Product</th>
                       <th className="p-4 text-left font-semibold">Description</th>
                       <th className="p-4 text-left font-semibold">Dimensions (cm)</th>
                       <th className="p-4 text-left font-semibold">Weight (kg)</th>
@@ -628,6 +629,7 @@ export default function ShipmentDetails({ initialShipment, isAdmin = false }) {
                       <tr key={idx} className={`border-t ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-purple-50 transition`}>
                         <td className="p-4 text-gray-900 font-semibold">{fmt(p.qty)}</td>
                         <td className="p-4 text-gray-900">{fmt(p.piece_type)}</td>
+                        <td className="p-4 text-gray-900">{fmt(p.product)}</td>
                         <td className="p-4 text-gray-900">{fmt(p.description)}</td>
                         <td className="p-4 text-gray-900">{fmt(p.length_cm)} × {fmt(p.width_cm)} × {fmt(p.height_cm)}</td>
                         <td className="p-4 text-gray-900 font-semibold">{fmt(p.weight_kg)}</td>

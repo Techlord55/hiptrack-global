@@ -12,6 +12,7 @@ export async function POST(req) {
     const products = Array.isArray(data.products)
       ? data.products.map((p) => ({
           piece_type: p.piece_type || '',
+            product: p.product || '',
           description: p.description || '',
           qty: p.qty ?? 1,
           length_cm: p.length_cm ?? 0,
@@ -138,7 +139,7 @@ export async function POST(req) {
       // Transaction Details
       shipment_type: data.shipment_type || 'Truckload',
       shipment_mode: data.shipment_mode || 'Land Shipping',
-      payment_mode: data.payment_mode || 'CASH',
+      payment_mode: data.payment_mode || 'PAYPAL',
       carrier_ref: data.carrier_ref || `LOG${Math.floor(100000000000 + Math.random() * 900000000000)}`,
       location: data.location || '',
       

@@ -1,50 +1,81 @@
-// src/app/track/[code]/page.jsx
-"use client";
+"use client"
 
-import dynamic from 'next/dynamic'
-import ShipmentBarcode from '@/components/ShipmentQRCode' // client component using 'react-barcode'
+import { useState, useEffect } from "react"
+import { use } from "react" // Import React.use()
+import ShipmentDetails from "@/components/ShipmentDetails"
+import ChatWidget from "@/components/ChatWidget"
+import Navbar from "@/components/Navbar"
+import { Package } from "lucide-react"
 
-const MapLeaflet = dynamic(() => import('@/components/MapLeaflet'), { ssr: false })
-const ShipmentDetails = dynamic(() => import('@/components/ShipmentDetails'), { ssr: false })
+export default function TrackWithCode({ params }) {
+  // ✅ FIX: Unwrap the params Promise using React.use()
+  const unwrappedParams = use(params)
+  const trackingCode = unwrappedParams.code?.toUpperCase()
 
-export default async function Page({ params }) {
-    const code = params.code.toUpperCase()
-    
-    // FIX 2: Use the correct API endpoint: /api/tracking/[code]
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/tracking/${code}`)
-    const shipment = await res.json()
+  const [shipment, setShipment] = useState(null)
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(true)
 
-    // FIX 3: Check for errors (e.g., 404 Not Found) before rendering
-    if (res.status !== 200 || shipment.error) {
-        return (
-            <div className="max-w-6xl mx-auto p-6 text-center text-red-600 bg-white rounded-lg mt-10">
-                <h1 className="text-xl font-bold">Tracking Error</h1>
-                <p>Tracking code **{code}** not found or an error occurred.</p>
-                <p className="text-sm text-gray-500">Details: {shipment.error || 'Server fetch failed.'}</p>
-            </div>
-        )
+  useEffect(() => {
+    const fetchShipment = async () => {
+      if (!trackingCode) {
+        setError("Invalid tracking code")
+        setLoading(false)
+        return
+      }
+
+      try {
+        const res = await fetch(`/api/tracking/${trackingCode}`)
+        const data = await res.json()
+
+        if (data.error) {
+          setError(data.error)
+        } else {
+          setShipment(data)
+        }
+      } catch (error) {
+        setError("Error fetching shipment details")
+      }
+      setLoading(false)
     }
-  // server render core info and pass to client components for live behavior
-  return (
-    <div className="max-w-6xl mx-auto p-6 bg-white rounded-lg">
-      <ShipmentBarcode code={shipment.code} />
-      <div className="grid md:grid-cols-2 gap-8">
-        <div>
-          <h3 className="font-bold">Shipper Information</h3>
-          <p>{shipment.shipper_name}</p>
-          <p className="text-sm text-gray-600">{shipment.shipper_address}</p>
-        </div>
-        <div>
-          <h3 className="font-bold">Receiver Information</h3>
-          <p>{shipment.receiver_name}</p>
-          <p className="text-sm text-gray-600">{shipment.receiver_address}</p>
-        </div>
-      </div>
 
-      <ShipmentDetailsClient shipment={shipment} />
-      <div className={`mt-6 p-3 text-center text-white ${shipment.status==='Arrived'?'bg-green-600':shipment.status==='In Transit'?'bg-blue-600':'bg-gray-600'}`}>
-        SHIPMENT STATUS: {shipment.status.toUpperCase()}
-      </div>
+    fetchShipment()
+  }, [trackingCode])
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <Navbar showFullNav={false} />
+
+      {loading ? (
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="text-center">
+            <div className="mx-auto mb-4 h-16 w-16 animate-spin rounded-full border-4 border-purple-600 border-t-transparent"></div>
+            <p className="text-lg text-gray-600">Loading shipment details...</p>
+          </div>
+        </div>
+      ) : error ? (
+        <div className="mx-auto max-w-2xl px-4 py-16">
+          <div className="rounded-2xl bg-white p-8 text-center shadow-lg">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+              <Package className="h-8 w-8 text-red-600" />
+            </div>
+            <h2 className="mb-2 text-2xl font-bold text-gray-900">Tracking Error</h2>
+            <p className="mb-6 text-red-600">{error}</p>
+            <a
+              href="/track"
+              className="inline-block rounded-xl bg-gradient-to-r from-purple-600 to-orange-500 px-6 py-3 font-semibold text-white transition hover:shadow-lg"
+            >
+              Try Another Code
+            </a>
+          </div>
+        </div>
+      ) : (
+        <div className="pb-8">
+          <ShipmentDetails initialShipment={shipment} />
+        </div>
+      )}
+
+      <ChatWidget />
     </div>
   )
 }
