@@ -5,8 +5,10 @@ import ReviewsCarousel from "@/components/ReviewsCarousel";
 import ShippingCarousel from "@/components/ShippingCarousel";
 import ChatWidget from "@/components/ChatWidget";
 import Navbar from "@/components/Navbar";
+
 import Link from "next/link";
 import { Truck, Globe, Clock, Shield, Headphones } from "lucide-react";
+
 
 export default function Home() {
   const features = [

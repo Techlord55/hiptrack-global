@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 // At the very top of your file
 import { format } from 'date-fns'
 import ShipmentHistory from "@/components/ShipmentHistory"
+import ShipmentQRCode from "@/components/ShipmentQRCode";
 import { 
   Clock, 
   Calendar, 
@@ -231,6 +232,11 @@ export default function ShipmentDetails({ initialShipment, isAdmin = false }) {
                 )}
               </div>
             </div>
+          <div className="relative left-20 md:left-0">
+  <ShipmentQRCode code={shipment.code} />
+</div>
+
+           
           </div>
         </div>
 
